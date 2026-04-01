@@ -1,0 +1,8 @@
+{
+  "name": "T Chat",
+  "description": "A secure, real-time communication platform for chat, video calls, voice calls, and screen sharing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

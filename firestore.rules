@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string
+    //   - photoURL: string
+    //   - email: string (required)
+    //   - role: string (required, enum: ['admin', 'user'])
+    //   - createdAt: timestamp
+    //
+    // Collection: messages
+    // Document ID: auto-generated
+    // Fields:
+    //   - text: string (required, size < 1000)
+    //   - senderId: string (required)
+    //   - senderName: string
+    //   - senderPhoto: string
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: calls
+    // Document ID: auto-generated
+    // Fields:
+    //   - callerId: string (required)
+    //   - receiverId: string (required)
+    //   - offer: map
+    //   - answer: map
+    //   - status: string (required, enum: ['calling', 'ongoing', 'ended'])
+    //   - type: string (required, enum: ['video', 'voice', 'screen'])
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "tamimtahasin255@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'user'];
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['text', 'senderId', 'createdAt']) &&
+             data.text is string && data.text.size() < 1000 &&
+             data.senderId == request.auth.uid;
+    }
+
+    function isValidCall(data) {
+      return data.keys().hasAll(['callerId', 'receiverId', 'status', 'type', 'createdAt']) &&
+             data.status in ['calling', 'ongoing', 'ended'] &&
+             data.type in ['video', 'voice', 'screen'];
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /calls/{callId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.callerId || request.auth.uid == resource.data.receiverId || isAdmin());
+      allow create: if isAuthenticated() && isValidCall(request.resource.data) && (request.resource.data.callerId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.callerId || request.auth.uid == resource.data.receiverId || isAdmin());
+      allow delete: if isAdmin();
+
+      match /callerCandidates/{candidateId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /receiverCandidates/{candidateId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+  }
+}
